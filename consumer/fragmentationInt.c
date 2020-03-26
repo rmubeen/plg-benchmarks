@@ -1,22 +1,3 @@
-/*
-	Mode: C
-
-	fragmentationInt.c
-
-	Author:
-	Created:
-	Last Modified:
-	Update:
-
-	To Do:
-		Better Arguments Management
-		Take Distributions of Size and Lifetime of objects
-		mmao stats
-
-	Useful resources:
-		mcheck, mtrace, malloc_stats, malloc_info(0, stdout), malloc_usable_size(obj_ptrs[0])), mallopt(), open_memstream, mallinfo
-*/
-
 #ifndef fragmentation_Int_C
 #define fragmentation_Int_C
 #define _GNU_SOURCE
@@ -28,7 +9,7 @@
 #include "malloc.h"
 #include "signal.h"
 
-#include "utilities.h"
+#include "../common/utilities.h"
 #include "distributionGen.h"
 #include "explicitMallocHooks.h"
 #include <sys/sysinfo.h>
@@ -123,6 +104,7 @@ void instance() {
 	}
 
 	if(verbose) {malloc_stats(); printf("\n");}
+
 	while (free_counter < malloc_counter) {
 		size_t obj_size = pointers_data[free_counter].requested_memory;
 		exp_free_hook(pointers_data[free_counter].ptr, pointers_data[free_counter].requested_memory);
@@ -149,15 +131,17 @@ int main(int argc, char* argv[]) {
 	verbose = 0;
 	verbose_buffer = (char*) malloc(1000 * sizeof(char));
 	int_malloc_stats = shmem;
+
 	// handle commandline arguments
 	parseArguments(argc, argv);
 	pointers_data = malloc(knobs.num_objects * sizeof(td_pointers_data));
 	sprintf(verbose_buffer, "verbose: %s\nmin_obj_size: %lu\nmax_obj_size: %lu\nnum_objects: %ld\n", verbose? "true":"false", knobs.min_obj_size, knobs.max_obj_size, knobs.num_objects); verbose_print();
 
-	// initiate main thread
+	// job
 	instance();
 	sprintf(verbose_buffer, "verbose: %s\nmin_obj_size: %lu\nmax_obj_size: %lu\nnum_objects: %ld\n", verbose? "true":"false", knobs.min_obj_size, knobs.max_obj_size, knobs.num_objects); verbose_print();
 
+	// end
 	end_ipc();
 	free(verbose_buffer);
 	free(pointers_data);

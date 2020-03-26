@@ -1,14 +1,3 @@
-/*
-	Mode: C
-
-	benchmark.c
-
-	Author:
-	Created:
-	Last Modified:
-	Update:
-*/
-
 #ifndef benchmark_C
 #define benchmark_C
 
@@ -19,7 +8,7 @@
 #include <errno.h> // execvp return
 #include "signal.h"
 
-#include "utilities.h"
+#include "../common/utilities.h"
 #include "explicitMallocStats.h"
 
 void parseArguments(int argc, char* argv[]) {
@@ -29,8 +18,10 @@ void parseArguments(int argc, char* argv[]) {
 	knobs.executable = malloc(50 * sizeof(char));
 	knobs.executable[0] = '\0';
 	knobs.execution_args_i = argc;
+	knobs.output_file = NULL;
 
 	knobs.verbose_flag = 0;
+	knobs.sig_bound = 0;
 
 	// customize knobs as per command-line arguments
 	for(int i_argv=1; (i_argv < argc) && (knobs.execution_args_i == argc); i_argv++) {
@@ -39,6 +30,8 @@ void parseArguments(int argc, char* argv[]) {
 
 		if (strcmp (key, "-t") == 0) {knobs.delay_time = atoi(value); goto LoopEnd;}
 		else if (strcmp(key, "-v") == 0) {knobs.verbose_flag = 1; verbose = 1; goto LoopEnd;}
+		else if (strcmp(key, "-o") == 0) {knobs.output_file = malloc(100 * sizeof(char)); sprintf(knobs.output_file, "%s", value); goto LoopEnd;}
+		else if (strcmp(key, "-sig") == 0) {knobs.sig_bound = 1; start_sig = 0; stop_sig = 0; goto LoopEnd;}
 		else if (strcmp(key, "-e") == 0) {sprintf(knobs.executable, "%s", value); knobs.execution_args_i = i_argv + 1; break;}
 		else if (strcmp(key, "-h") == 0) { goto UsageMessage;}
 		else { goto UsageMessage;}
@@ -53,8 +46,10 @@ void parseArguments(int argc, char* argv[]) {
 	UsageMessage:
 	printf("Usage options:\n\
 	-t=: sets delay between two readings\n\
-	-v=: verbose mode\n\
 	-e=: path to executable followed by parameters\n\
+	-o=: output file\n\
+	-sig: bound to start and stop signals for reading memory usage of process\n\
+	-v: verbose mode\n\
 	-h: help\n");
 	exit(1);
 }
@@ -65,6 +60,8 @@ void set_pre_shot(int sig) {
 
 	exp_malloc_stats.pre_mem_shot = parse_proc_maps(proc_maps_fname);
 	exp_malloc_stats.pre_mem_shot.int_malloc_stats = *shmem;
+	exp_malloc_stats.pre_mem_shot.fragmentation = calculate_fragmentation(exp_malloc_stats.pre_mem_shot);
+	start_sig = 1;
 
 	kill(shmem->pid, SIGCONT);
 	sprintf(verbose_buffer, "\nPre called\n"); verbose_print();
@@ -77,6 +74,8 @@ void set_post_shot(int sig) {
 
 	exp_malloc_stats.post_mem_shot = parse_proc_maps(proc_maps_fname);
 	exp_malloc_stats.post_mem_shot.int_malloc_stats = *shmem;
+	exp_malloc_stats.post_mem_shot.fragmentation = calculate_fragmentation(exp_malloc_stats.post_mem_shot);
+	stop_sig = 1;
 
 	kill(shmem->pid, SIGCONT);
 	sprintf(verbose_buffer, "\nPost called\n"); verbose_print();
@@ -117,23 +116,46 @@ void benchmark_process(int pid) {
 	char* proc_maps_fname = malloc(50 * sizeof(char));
 	sprintf(proc_maps_fname, "/proc/%d/maps", pid);
 
+	if(knobs.verbose_flag == 1) {print_mem_stats_layout(NULL);};
 	char pid_status = get_proc_status(pid);
 	while ((pid_status != 'Z') && (pid_status != 'X') && (pid_status != 'x')) {
-		printf("\rchild status: %c %d %d", pid_status, exp_malloc_stats.counter, exp_malloc_stats.size);
+ 		if(knobs.sig_bound != 0){
+ 			if(stop_sig != 0) {printf("\nRecieved stop signal"); break;}
+ 		}
+ 		printf("\rchild status: %c, reading counter: %d, array size: %d", pid_status, exp_malloc_stats.counter, exp_malloc_stats.size);
 		if (exp_malloc_stats.counter >= exp_malloc_stats.size - 100) {
 			exp_malloc_stats.mem_shots = realloc(exp_malloc_stats.mem_shots, (exp_malloc_stats.size + 1000) * sizeof(memory_snapshot));
 			exp_malloc_stats.size += 1000;
 		}
 
+		int count = exp_malloc_stats.counter;
 		kill(pid, SIGSTOP);
-		exp_malloc_stats.mem_shots[exp_malloc_stats.counter] = parse_proc_maps(proc_maps_fname);
-		exp_malloc_stats.mem_shots[exp_malloc_stats.counter].int_malloc_stats = *shmem;
-		exp_malloc_stats.counter += 1;
+		memory_snapshot cur_mem_shot = parse_proc_maps(proc_maps_fname);
+		cur_mem_shot.int_malloc_stats = *shmem;
 		kill(pid, SIGCONT);
+		cur_mem_shot.fragmentation = calculate_fragmentation(cur_mem_shot);
+		exp_malloc_stats.mem_shots[exp_malloc_stats.counter] = cur_mem_shot;
+		exp_malloc_stats.counter += 1;
+
+		if(count == 0) {
+			exp_malloc_stats.comp_sys[0] = exp_malloc_stats.comp_sys[1] = cur_mem_shot;
+			exp_malloc_stats.comp_frag[0] = exp_malloc_stats.comp_frag[1] = cur_mem_shot;
+			exp_malloc_stats.avg_mem_shot = cur_mem_shot;
+		} else {
+			if(cur_mem_shot.total_dynamic < exp_malloc_stats.comp_sys[0].total_dynamic) { exp_malloc_stats.comp_sys[0] = cur_mem_shot; }
+			else if(cur_mem_shot.total_dynamic > exp_malloc_stats.comp_sys[1].total_dynamic) { exp_malloc_stats.comp_sys[1] = cur_mem_shot; }
+
+			if(cur_mem_shot.fragmentation.total < exp_malloc_stats.comp_frag[0].fragmentation.total) { exp_malloc_stats.comp_frag[0] = cur_mem_shot; }
+			else if(cur_mem_shot.fragmentation.total > exp_malloc_stats.comp_frag[1].fragmentation.total) { exp_malloc_stats.comp_frag[1] = cur_mem_shot; }
+
+			exp_malloc_stats.avg_mem_shot = incr_avg_mem_shot(exp_malloc_stats.avg_mem_shot, count, cur_mem_shot);
+		}
+
+		if(knobs.verbose_flag == 1) {printf("\r"); print_mem_stats(exp_malloc_stats.mem_shots[count], NULL); printf(": CUR");}
 		sleep(knobs.delay_time/100.0);
 		pid_status = get_proc_status(pid);
 	}
-	printf("\n"); if (pid_status == 'Z') {printf("Child process went Zombie\n");}
+	printf("\n"); if (pid_status == 'Z') {sprintf(verbose_buffer, "Child process went Zombie\n"); verbose_print();}
 
 	free(proc_maps_fname); proc_maps_fname = NULL;
 	return;
@@ -146,7 +168,7 @@ void benchmark_process(int pid) {
 	side effects: generates output to stdout
 */
 int main(int argc, char* argv[]) {
-	//initiate global variables
+	// initiate global variables
 	init_ipc();
 	shmem->ppid = getpid();
 	shmem->MSG[11] = "\0";
@@ -160,7 +182,8 @@ int main(int argc, char* argv[]) {
 	shmem->current_usable_allocation = 0;
 	verbose = 0;
 	verbose_buffer = (char*) malloc(1000 * sizeof(char));
-	exp_malloc_stats.peak_mem_shot = {0};
+	start_sig = 1;
+	stop_sig = 0;
 	exp_malloc_stats.mem_shots = malloc(1000 * sizeof(memory_snapshot));
 	exp_malloc_stats.size = 1000;
 	exp_malloc_stats.counter = 0;
@@ -175,8 +198,49 @@ int main(int argc, char* argv[]) {
 	int pid = start_process(argc, argv);
  	sprintf(verbose_buffer, "process %d created by %d\n", pid, getppid()); verbose_print();
 
+ 	// perform memory benchmarking
+ 	if(knobs.sig_bound != 0) {
+ 		while(start_sig == 0) {
+ 			printf("\rWaiting for start signal...");
+ 		}
+ 		printf("\nRecieved start signal\n");
+ 	}
 	benchmark_process(pid);
 
+	// print results
+	print_mem_stats_layout(NULL);
+	print_mem_stats(exp_malloc_stats.pre_mem_shot, NULL); printf(": PRE\n");
+	print_mem_stats(exp_malloc_stats.post_mem_shot, NULL); printf(": POST\n");
+	print_mem_stats(exp_malloc_stats.avg_mem_shot, NULL); printf(": AVG\n");
+	printf("w.r.t. system memory:\n");
+	print_mem_stats(exp_malloc_stats.comp_sys[0], NULL); printf(": LOW\n");
+	print_mem_stats(exp_malloc_stats.comp_sys[1], NULL); printf(": HIGH\n");
+	printf("w.r.t. fragmentation:\n");
+	print_mem_stats(exp_malloc_stats.comp_frag[0], NULL); printf(": LOW\n");
+	print_mem_stats(exp_malloc_stats.comp_frag[1], NULL); printf(": HIGH\n");
+
+	if (knobs.output_file != NULL) {
+		printf("Dumping memory snapshots\n");
+
+		FILE* fp = fopen(knobs.output_file, "w");
+
+		print_mem_stats_layout(fp);
+		print_mem_stats(exp_malloc_stats.pre_mem_shot, fp);
+		print_mem_stats(exp_malloc_stats.post_mem_shot, fp);
+		print_mem_stats(exp_malloc_stats.avg_mem_shot, fp);
+		print_mem_stats(exp_malloc_stats.comp_sys[0], fp);
+		print_mem_stats(exp_malloc_stats.comp_sys[1], fp);
+		print_mem_stats(exp_malloc_stats.comp_frag[0], fp);
+		print_mem_stats(exp_malloc_stats.comp_frag[1], fp);
+
+		for (int i = 0; i < exp_malloc_stats.counter; ++i) {
+			print_mem_stats(exp_malloc_stats.mem_shots[i], fp);
+		}
+
+		fclose(fp);
+	}
+
+	// end
  	end_ipc();
 	return 0;
 }

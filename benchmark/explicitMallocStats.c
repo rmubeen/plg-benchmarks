@@ -1,14 +1,3 @@
-/*
-	Mode: C
-
-	explicitMallocStats.c
-
-	Author:
-	Created:
-	Last Modified:
-	Update:
-*/
-
 #ifndef explicit_Malloc_Stats_C
 #define explicit_Malloc_Stats_C
 
@@ -58,104 +47,122 @@ memory_snapshot parse_proc_maps(char* fname) {
 	}
 
 	FUNC_PARSE_PROC_MAPS_END:
+    mem_snapshot.total_dynamic = mem_snapshot.heap + mem_snapshot.mmap;
 	fclose(fptr); fptr = NULL;
 	return mem_snapshot;
 }
 
-/*fragmentation calculate_fragmentation() {
-	fragmentation cur_frag = {0};
+memory_snapshot incr_avg_mem_shot(memory_snapshot avg, int n, memory_snapshot new_mem) {
+	memory_snapshot new_avg;
 
-	long int bench_in_use = exp_malloc_stats.cur_in_use_bytes - exp_malloc_stats.pre_in_use_bytes;
-	long int bench_heap = exp_malloc_stats.cur_proc_maps.heap; // - exp_malloc_stats.pre_proc_maps.heap;
-	long int bench_mmap = exp_malloc_stats.cur_proc_maps.mmap - exp_malloc_stats.pre_proc_maps.mmap;
+	new_avg.text = (avg.text * n + new_mem.text) / (n + 1);
 
-	cur_frag.ref_bytes = exp_malloc_stats.current_requested_memory;
-	cur_frag.alignment = exp_malloc_stats.current_usable_allocation - exp_malloc_stats.current_requested_memory;
-//	cur_frag.bookkeeping = bench_in_use - exp_malloc_stats.current_usable_allocation;
-	cur_frag.internal = cur_frag.alignment;
+	new_avg.heap = (avg.heap * n + new_mem.heap) / (n + 1);
+	new_avg.mmap = (avg.mmap * n + new_mem.mmap) / (n + 1);
+	new_avg.mmap_so = (avg.mmap_so * n + new_mem.mmap_so) / (n + 1);
 
-//	if (cur_frag.bookkeeping >= 0) {
-//		cur_frag.internal = cur_frag.alignment + cur_frag.bookkeeping;
-//	}
+	new_avg.vvar = (avg.vvar * n + new_mem.vvar) / (n + 1);
+	new_avg.vdso = (avg.vdso * n + new_mem.vdso) / (n + 1);
+	new_avg.stack = (avg.stack * n + new_mem.stack) / (n + 1);
+	new_avg.vsyscall = (avg.vsyscall * n + new_mem.vsyscall) / (n + 1);
 
-	cur_frag.external = (bench_mmap + bench_heap) - (exp_malloc_stats.current_usable_allocation);
-	printf("%ld %ld %ld %ld\n", bench_in_use, bench_heap, bench_mmap, cur_frag.external);
+	new_avg.unfigured = (avg.unfigured * n + new_mem.unfigured) / (n + 1);
+    new_avg.total_dynamic = (avg.total_dynamic * n + new_mem.total_dynamic) / (n + 1);
 
-	FUNC_CALCULATE_FRAGMENTATION_END:
-	return cur_frag;
-}*/
+	new_avg.int_malloc_stats = incr_avg_int_mem_stats(avg.int_malloc_stats, n, new_mem.int_malloc_stats);
+    new_avg.fragmentation = incr_avg_fragmentation(avg.fragmentation, n, new_mem.fragmentation);
+
+	return new_avg;
+}
+
+t_int_malloc_stats incr_avg_int_mem_stats(t_int_malloc_stats avg, int n, t_int_malloc_stats new_stats) {
+	t_int_malloc_stats new_avg;
+
+	new_avg.MSG[0] = '\0';
+	new_avg.ppid = avg.ppid;
+	new_avg.pid = avg.pid;
+
+	new_avg.free_count = (avg.free_count * n + new_stats.free_count) / (n + 1);
+	new_avg.malloc_count = (avg.malloc_count * n + new_stats.malloc_count) / (n + 1);
+	new_avg.calloc_count = (avg.calloc_count * n + new_stats.calloc_count) / (n + 1);
+	new_avg.realloc_count = (avg.realloc_count * n + new_stats.realloc_count) / (n + 1);
+
+	new_avg.requested_memory = (avg.requested_memory * n + new_stats.requested_memory) / (n + 1);
+	new_avg.usable_allocation = (avg.usable_allocation * n + new_stats.usable_allocation) / (n + 1);
+	new_avg.current_requested_memory = (avg.current_requested_memory * n + new_stats.current_requested_memory) / (n + 1);
+	new_avg.current_usable_allocation = (avg.current_usable_allocation * n + new_stats.current_usable_allocation) / (n + 1);
+
+	return new_avg;
+}
+
+t_fragmentation incr_avg_fragmentation(t_fragmentation avg, int n, t_fragmentation new_frag) {
+    t_fragmentation new_avg;
+
+    new_avg.alignment = (avg.alignment * n + new_frag.alignment) / (n + 1);
+    new_avg.bookkeeping = (avg.bookkeeping * n + new_frag.bookkeeping) / (n + 1);
+
+    new_avg.internal = (avg.internal * n + new_frag.internal) / (n + 1);
+    new_avg.external = (avg.external * n + new_frag.external) / (n + 1);
+
+    new_avg.ref_bytes = (avg.ref_bytes * n + new_frag.ref_bytes) / (n + 1);
+    new_avg.total = (avg.total * n + new_frag.total) / (n + 1);
+
+    return new_avg;
+}
+
+t_fragmentation calculate_fragmentation(memory_snapshot mem_shot) {
+    t_fragmentation fragmentation;
+
+	unsigned long int mem_alloc = mem_shot.mmap + mem_shot.heap;
+	unsigned long long mem_in_use = mem_shot.int_malloc_stats.current_usable_allocation;
+    unsigned long long mem_in_req = mem_shot.int_malloc_stats.current_requested_memory;
+
+    fragmentation.ref_bytes = (mem_in_req == 0) ? 1 : mem_in_req;
+
+	fragmentation.bookkeeping = 0.0; // Not working yet
+	fragmentation.alignment = ( mem_in_use - mem_in_req) * 1.0 / fragmentation.ref_bytes * 100.0;
+
+	fragmentation.internal = fragmentation.alignment + fragmentation.bookkeeping;
+	fragmentation.external = ( mem_alloc - mem_in_use) * 1.0 / fragmentation.ref_bytes * 100.0;
+
+	fragmentation.total = fragmentation.internal + fragmentation.external;
+
+    return fragmentation;
+}
 
 ///////////////////////////////////////////////////////
 //         Print Functions For Data Structures       //
 ///////////////////////////////////////////////////////
 
-/*
-void print_memory_snapshot(memory_snapshot ms) {
-	printf("\
-	text:			%lu\n\
-	heap:			%lu\n\
-	mmap_so:		%lu\n\
-	mmap:			%lu\n\
-	stack:			%lu\n\
-	vvar:			%lu\n\
-	vdso:			%lu\n\
-	vsyscall:		%lu\n\
-	unfigured:		%lu\n"
-	, ms.text, ms.heap, ms.mmap_so, ms.mmap, ms.stack, ms.vvar, ms.vdso, ms.vsyscall, ms.unfigured);
+void print_mem_stats_layout(FILE *fp) {
+    char* str_buffer = malloc(1000 * sizeof(char));
+    sprintf(str_buffer, "\
+             req_mem          cur_req_mem          in_use_mem        cur_in_use_mem                 heap                 mmap\
+                total         int_frag         ext_frag            total\n");
+
+    if(fp == NULL) {printf("%s", str_buffer);}
+    else {fprintf(fp, "%s", str_buffer);}
+    free(str_buffer);
 }
 
-void print_exp_malloc_stats() {
-	printf("Explicit Malloc Stats:\n\
-	malloc count: 	%lu\n\
-	free count: 	%lu\n\
-	calloc count: 	%lu\n\
-	realloc count: 	%lu\n\
-	...\n\
-	requested memory: 	%llu\n\
-	usable allocation: 	%llu\n\
-	cur requested memory: 	%llu\n\
-	cur usable alloc: 	%llu\n\
-"
-, exp_malloc_stats.int_malloc_stats.malloc_count, exp_malloc_stats.int_malloc_stats.free_count, exp_malloc_stats.int_malloc_stats.calloc_count
-, exp_malloc_stats.int_malloc_stats.realloc_count, exp_malloc_stats.int_malloc_stats.requested_memory, exp_malloc_stats.int_malloc_stats.usable_allocation
-, exp_malloc_stats.int_malloc_stats.current_requested_memory, exp_malloc_stats.int_malloc_stats.current_usable_allocation);
+void print_mem_stats(memory_snapshot mem_shot, FILE *fp) {
+    char* str_buffer = malloc(1000 * sizeof(char));
+    sprintf(str_buffer, "%20llu %20llu %20llu %20llu %20ld %20ld %20ld %15.2Lf%% %15.2Lf%% %15.2Lf%%",
+        mem_shot.int_malloc_stats.requested_memory,
+        mem_shot.int_malloc_stats.usable_allocation,
+        mem_shot.int_malloc_stats.current_requested_memory,
+        mem_shot.int_malloc_stats.current_usable_allocation,
+        mem_shot.heap,
+        mem_shot.mmap,
+        mem_shot.total_dynamic,
+        mem_shot.fragmentation.internal,
+        mem_shot.fragmentation.external,
+        mem_shot.fragmentation.total
+        );
 
-	printf("	...\n\
-	init proc maps:\n");
-	print_memory_snapshot(exp_malloc_stats.init_mem_maps);
-
-	printf("	...\n\
-	pre proc maps:\n");
-	print_memory_snapshot(exp_malloc_stats.pre_mem_maps);
-
-	printf("	...\n\
-	cur proc maps:\n");
-	print_memory_snapshot(exp_malloc_stats.cur_mem_maps);
+    if(fp == NULL) {printf("%s", str_buffer);}
+    else {fprintf(fp, "%s\n", str_buffer);}
+    free(str_buffer);
 }
 
-void print_fragmentation(fragmentation frag) {
-	printf("Total memory needed:		%lld\n\
-Fragmentation:\n\
-	internal:			%lld %Lf%%\n\
-	external:			%lld %Lf%%\n\
-	total:				%lld %Lf%%\n"
-	, frag.ref_bytes, frag.internal, frag.internal * (long double) 100.0 / frag.ref_bytes, frag.external, frag.external * (long double) 100.0 / frag.ref_bytes
-	, frag.internal + frag.external, (frag.internal + frag.external) * (long double) 100.0 / frag.ref_bytes);
-
-	if(frag.bookkeeping >= 0) {
-	printf("\
-Internal fragmentation details:\n\
-	alignment:	%lld %Lf%%\n\
-	bookkeeping:	%lld %Lf%%\n"
-	, frag.alignment, frag.alignment * (long double) 100.0 / frag.ref_bytes, frag.bookkeeping, frag.bookkeeping * (long double) 100.0 / frag.ref_bytes);
-	} else {
-	printf("\
-Internal fragmentation details:\n\
-	alignment:	%lld %Lf%%\n"
-	, frag.alignment, frag.alignment * (long double) 100.0 / frag.ref_bytes);
-		printf("*FRAGMENTATION CAUSED BY MALLOC BOOKKEEPING IS PART OF EXTERNAL FRAGMENTATION*\n");
-	}
-
-}
-*/
 #endif

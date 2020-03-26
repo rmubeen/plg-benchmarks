@@ -13,7 +13,7 @@ TARGET = benchmark
 ##### C++ Code
 
 benchmark: benchmark.c
-	$(CC) $(CFLAGS) $(BUILTINFLAGS) benchmark.c utilities.c explicitMallocStats.c -o benchmark
+	$(CC) $(CFLAGS) $(BUILTINFLAGS) benchmark.c ../common/utilities.c explicitMallocStats.c -o benchmark
 
 #####
 
