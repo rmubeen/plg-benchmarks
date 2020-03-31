@@ -59,6 +59,7 @@ struct S_parameters {
 
 	int verbose_flag;		// only 0 means false
 	int sig_bound;
+	int send_ppid;
 } knobs;
 
 typedef struct S_fragmentation {

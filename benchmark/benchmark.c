@@ -25,6 +25,7 @@ void parseArguments(int argc, char* argv[]) {
 
 	knobs.verbose_flag = 0;
 	knobs.sig_bound = 0;
+	knobs.send_ppid = 0;
 
 	// customize knobs as per command-line arguments
 	for(int i_argv=1; (i_argv < argc) && (knobs.execution_args_i == argc); i_argv++) {
@@ -35,6 +36,7 @@ void parseArguments(int argc, char* argv[]) {
 		else if (strcmp(key, "-v") == 0) {knobs.verbose_flag = 1; verbose = 1; goto LoopEnd;}
 		else if (strcmp(key, "-o") == 0) {knobs.output_file = malloc(100 * sizeof(char)); sprintf(knobs.output_file, "%s", value); goto LoopEnd;}
 		else if (strcmp(key, "-sig") == 0) {knobs.sig_bound = 1; start_sig = 0; stop_sig = 0; goto LoopEnd;}
+		else if (strcmp(key, "-ppid") == 0) {knobs.send_ppid = 1; goto LoopEnd;}
 		else if (strcmp(key, "-e") == 0) {sprintf(knobs.executable, "%s", value); knobs.execution_args_i = i_argv + 1; break;}
 		else if (strcmp(key, "-h") == 0) { goto UsageMessage;}
 		else { goto UsageMessage;}
@@ -86,18 +88,20 @@ void set_post_shot(int sig) {
 }
 
 int start_process(int argc, char* argv[]) {
-	int proc_argc = argc-knobs.execution_args_i+3;
+	int proc_argc = knobs.send_ppid == 0 ? argc-knobs.execution_args_i+2 : argc-knobs.execution_args_i+3;
 	char* proc_argv[proc_argc];
 
 	proc_argv[0] = knobs.executable;
-	proc_argv[proc_argc-2] = malloc(50 * sizeof(char));
-	sprintf(proc_argv[proc_argc-2], "-ppid=%d", getpid());
+	if(knobs.send_ppid != 0) {
+		proc_argv[proc_argc-2] = malloc(50 * sizeof(char));
+		sprintf(proc_argv[proc_argc-2], "-ppid=%d", getpid());
+	}
 	proc_argv[proc_argc-1] = NULL;
 	char* proc_env[] = {NULL, NULL};
 	proc_env[0] = malloc(500 * sizeof(char));
 	sprintf(proc_env[0], "LD_PRELOAD=%s/../malloc/mallocWrappers.so", getcwd(verbose_buffer, 500));
 
-	for (int argc_i = 1; argc_i < proc_argc-2; ++argc_i) {
+	for (int argc_i = 1; argc_i < (proc_argc-1 - knobs.send_ppid); ++argc_i) {
 		proc_argv[argc_i] = argv[argc_i + knobs.execution_args_i - 1];
 	}
 
