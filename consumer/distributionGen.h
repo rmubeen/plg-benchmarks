@@ -1,14 +1,3 @@
-/*
-	Mode: C++
-
-	distributionGen.h
-
-	Author:
-	Created:
-	Last Modified:
-	Update:
-*/
-
 #ifndef distribution_Gen_H
 #define distribution_Gen_H
 

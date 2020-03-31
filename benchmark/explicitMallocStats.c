@@ -1,10 +1,14 @@
 #ifndef explicit_Malloc_Stats_C
 #define explicit_Malloc_Stats_C
 
+#include "stdio.h"
+#include "string.h"
+#include "stdlib.h"
+
 #include "explicitMallocStats.h"
 
-memory_snapshot parse_proc_maps(char* fname) {
-	memory_snapshot mem_snapshot = {0};
+T_memory_snapshot parse_proc_maps(char* fname) {
+	T_memory_snapshot mem_snapshot = {0};
 	int in_mmap = 0;
 
 	char buffer[1000];
@@ -52,8 +56,8 @@ memory_snapshot parse_proc_maps(char* fname) {
 	return mem_snapshot;
 }
 
-memory_snapshot incr_avg_mem_shot(memory_snapshot avg, int n, memory_snapshot new_mem) {
-	memory_snapshot new_avg;
+T_memory_snapshot incr_avg_mem_shot(T_memory_snapshot avg, int n, T_memory_snapshot new_mem) {
+	T_memory_snapshot new_avg;
 
 	new_avg.text = (avg.text * n + new_mem.text) / (n + 1);
 
@@ -75,8 +79,8 @@ memory_snapshot incr_avg_mem_shot(memory_snapshot avg, int n, memory_snapshot ne
 	return new_avg;
 }
 
-t_int_malloc_stats incr_avg_int_mem_stats(t_int_malloc_stats avg, int n, t_int_malloc_stats new_stats) {
-	t_int_malloc_stats new_avg;
+T_int_malloc_stats incr_avg_int_mem_stats(T_int_malloc_stats avg, int n, T_int_malloc_stats new_stats) {
+	T_int_malloc_stats new_avg;
 
 	new_avg.MSG[0] = '\0';
 	new_avg.ppid = avg.ppid;
@@ -95,8 +99,8 @@ t_int_malloc_stats incr_avg_int_mem_stats(t_int_malloc_stats avg, int n, t_int_m
 	return new_avg;
 }
 
-t_fragmentation incr_avg_fragmentation(t_fragmentation avg, int n, t_fragmentation new_frag) {
-    t_fragmentation new_avg;
+T_fragmentation incr_avg_fragmentation(T_fragmentation avg, int n, T_fragmentation new_frag) {
+    T_fragmentation new_avg;
 
     new_avg.alignment = (avg.alignment * n + new_frag.alignment) / (n + 1);
     new_avg.bookkeeping = (avg.bookkeeping * n + new_frag.bookkeeping) / (n + 1);
@@ -110,12 +114,13 @@ t_fragmentation incr_avg_fragmentation(t_fragmentation avg, int n, t_fragmentati
     return new_avg;
 }
 
-t_fragmentation calculate_fragmentation(memory_snapshot mem_shot) {
-    t_fragmentation fragmentation;
+T_fragmentation calculate_fragmentation(T_memory_snapshot mem_shot) {
+    T_fragmentation fragmentation = {0};
 
 	unsigned long int mem_alloc = mem_shot.mmap + mem_shot.heap;
 	unsigned long long mem_in_use = mem_shot.int_malloc_stats.current_usable_allocation;
     unsigned long long mem_in_req = mem_shot.int_malloc_stats.current_requested_memory;
+    if(mem_in_use > mem_alloc) { return fragmentation; }
 
     fragmentation.ref_bytes = (mem_in_req == 0) ? 1 : mem_in_req;
 
@@ -136,18 +141,27 @@ t_fragmentation calculate_fragmentation(memory_snapshot mem_shot) {
 
 void print_mem_stats_layout(FILE *fp) {
     char* str_buffer = malloc(1000 * sizeof(char));
-    sprintf(str_buffer, "\
-             req_mem          cur_req_mem          in_use_mem        cur_in_use_mem                 heap                 mmap\
-                total         int_frag         ext_frag            total\n");
+    sprintf(str_buffer, "\n\
+             req_mem\
+         cur_req_mem\
+          in_use_mem\
+      cur_in_use_mem\
+                heap\
+                mmap\
+               total\
+           int_frag%%\
+           ext_frag%%\
+              total%%\n"
+        );
 
     if(fp == NULL) {printf("%s", str_buffer);}
     else {fprintf(fp, "%s", str_buffer);}
     free(str_buffer);
 }
 
-void print_mem_stats(memory_snapshot mem_shot, FILE *fp) {
+void print_mem_stats(T_memory_snapshot mem_shot, FILE *fp) {
     char* str_buffer = malloc(1000 * sizeof(char));
-    sprintf(str_buffer, "%20llu %20llu %20llu %20llu %20ld %20ld %20ld %15.2Lf%% %15.2Lf%% %15.2Lf%%",
+    sprintf(str_buffer, "%20llu %20llu %20llu %20llu %20ld %20ld %20ld %17.2Lf %17.2Lf %17.2Lf",
         mem_shot.int_malloc_stats.requested_memory,
         mem_shot.int_malloc_stats.usable_allocation,
         mem_shot.int_malloc_stats.current_requested_memory,

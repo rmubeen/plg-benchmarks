@@ -1,19 +1,16 @@
 CC  := $(CC)
 CXX := $(CXX)
-
-CFLAGS  := -g3 -O0 -DNDEBUG
-BUILTINFLAGS := -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
+CFLAGS  := -g3 -O0 -DBENCHMARK
 
 #####
 
 all : benchmark
-
 TARGET = benchmark
 
-##### C++ Code
+#####
 
 benchmark: benchmark.c
-	$(CC) $(CFLAGS) $(BUILTINFLAGS) benchmark.c ../common/utilities.c explicitMallocStats.c -o benchmark
+	$(CC) $(CFLAGS) -o $@ $^ ../common/utilities.c explicitMallocStats.c
 
 #####
 

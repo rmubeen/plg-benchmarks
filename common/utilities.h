@@ -6,17 +6,16 @@
 #ifndef SHM_KEY
 #define SHM_KEY 0x123457
 #endif
+int shmid;
+T_int_malloc_stats* shmem;
 
-#ifndef CONSUMER
+#ifdef BENCHMARK
 int start_sig;
 int stop_sig;
 #endif
 
 int verbose;
 char* verbose_buffer;
-
-int shmid;
-struct s_int_malloc_statistics* shmem;
 
 /*
 	verbose_print prints given message to stdout if verbose flage is set to true

@@ -2,9 +2,10 @@
 #define utilities_C
 
 #include "stdio.h"
+#include "errno.h"
 #include "stdlib.h"
 #include "string.h"
-#include "errno.h"
+#include <unistd.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
 
@@ -28,7 +29,7 @@ void print_file(char* fname) {
 	char buffer[1000];
 	FILE* fptr = fopen(fname, "r");
 	if(fptr == NULL) {
-		error(0, errno, "ERR: print file failed: %s", fname);
+		printf("ERR: print file failed: %s", fname);
 		return;
 	}
 
@@ -47,13 +48,13 @@ char get_proc_status(int pid) {
 
  	FILE* fstream = fopen(proc_stat_fname, "r");
  	if(fstream == NULL) {
-		error(0, errno, "ERR: fopen failed: %s", proc_stat_fname);
+		printf("ERR: fopen failed: %s", proc_stat_fname);
 		return '0';
  	}
 
 	char buffer[100];
 	if(fgets(buffer, 98, fstream) == NULL){
-		error(0, errno, "ERR: fgets failed: %s", proc_stat_fname);
+		printf("ERR: fgets failed: %s", proc_stat_fname);
 		return '0';
 	}
 
@@ -70,15 +71,15 @@ char get_proc_status(int pid) {
 }
 
 void init_ipc() {
-	shmid = shmget(SHM_KEY, sizeof(struct s_int_malloc_statistics), IPC_CREAT | 0666);
+	shmid = shmget(SHM_KEY, sizeof(T_int_malloc_stats), IPC_CREAT | 0666);
 	if(shmid == -1) {
-		error(0, errno, "ERR: IPC failed at shmget");
+		printf("ERR: IPC failed at shmget");
 		exit(1);
 	}
 
 	shmem = shmat(shmid, NULL, 0);
 	if (shmem == (void *) -1) {
-		error(0, errno, "ERR: IPC failed at shmat");
+		printf("ERR: IPC failed at shmat");
 		end_ipc();
 		exit(1);
 	}
@@ -86,11 +87,11 @@ void init_ipc() {
 
 void end_ipc() {
 	if (shmdt(shmem) == -1) {
-		error(0, errno, "ERR: IPC failed at shmdt");
+		printf("ERR: IPC failed at shmdt");
 	}
 
 	if (shmctl(shmid, IPC_RMID, 0) == -1) {
-		error(0, errno, "ERR: IPC may have failed (ignore if \"Invalid Argument\") at shmctl");
+		printf("ERR: IPC may have failed (ignore if \"Invalid Argument\") at shmctl");
 	}
 
 }

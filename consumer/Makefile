@@ -2,33 +2,32 @@ CC  := $(CC)
 CXX := $(CXX)
 
 CFLAGS  := -g3 -O0 -DCONSUMER
-BUILTINFLAGS := -DNDEBUG -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
+BUILTINFLAGS := -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
 
 #####
 
-all : distributionGen.o fragmentationInt.o fragmentation finish
-
-TARGET = distributionGen.o fragmentationInt.o fragmentation finish
+TARGET = distributionGen.o consumer.o consumer finish
+all : $(TARGET)
 
 ##### C++ Code
 
 distributionGen.o: distributionGen.cpp
-	$(CXX) $(CFLAGS) -c distributionGen.cpp -o distributionGen.o
+	$(CXX) $(CFLAGS) -c -o $@ $^
 
 #####
 
-fragmentationInt.o: fragmentationInt.c
-	$(CC) $(CFLAGS) -c fragmentationInt.c -o fragmentationInt.o
+consumer.o: consumer.c
+	$(CC) $(CFLAGS) -c -o $@ $^
 
-fragmentation: fragmentationInt.o distributionGen.o
-	$(CC) $(CFLAGS) fragmentationInt.o ../common/dataStructures.h ../common/utilities.c explicitMallocHooks.c distributionGen.o -DBUILTIN_MALLOC -o fragmentation
+consumer: consumer.o distributionGen.o
+	$(CC) $(CFLAGS) -o $@ $^ ../common/utilities.c
 
-#fragmentation-hoard: fragmentationInt.o distributionGen.o
-#	$(CC) $(CFLAGS) $(BUILTINFLAGS) fragmentationInt.o dataStructures.h utilities.c explicitMallocHooks.c distributionGen.o -I../../hoard/common -L../../hoard/src -lhoard -DBUILTIN_MALLOC -o fragmentation-hoard
+#consumer-hoard: consumer.o distributionGen.o
+#	$(CC) $(CFLAGS) $(BUILTINFLAGS) consumer.o dataStructures.h utilities.c distributionGen.o -I../../hoard/common -L../../hoard/src -lhoard -DBUILTIN_MALLOC -o consumer-hoard
 
 #####
 
-finish: fragmentation
+finish: consumer
 	rm -f *.o
 
 clean:

@@ -1,9 +1,12 @@
 #ifndef benchmark_C
 #define benchmark_C
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif // _GNU_SOURCE
 
 #include <stdio.h>
 #include <time.h>
-#include <unistd.h> // execvp
+#include <unistd.h> // execvpe
 #include <string.h> // strtok
 #include <errno.h> // execvp return
 #include "signal.h"
@@ -83,12 +86,18 @@ void set_post_shot(int sig) {
 }
 
 int start_process(int argc, char* argv[]) {
-	int proc_argc = argc-knobs.execution_args_i+2;
+	int proc_argc = argc-knobs.execution_args_i+3;
 	char* proc_argv[proc_argc];
-	proc_argv[proc_argc-1] = NULL;
-	proc_argv[0] = knobs.executable;
 
-	for (int argc_i = 1; argc_i < proc_argc-1; ++argc_i) {
+	proc_argv[0] = knobs.executable;
+	proc_argv[proc_argc-2] = malloc(50 * sizeof(char));
+	sprintf(proc_argv[proc_argc-2], "-ppid=%d", getpid());
+	proc_argv[proc_argc-1] = NULL;
+	char* proc_env[] = {NULL, NULL};
+	proc_env[0] = malloc(500 * sizeof(char));
+	sprintf(proc_env[0], "LD_PRELOAD=%s/../malloc/mallocWrappers.so", getcwd(verbose_buffer, 500));
+
+	for (int argc_i = 1; argc_i < proc_argc-2; ++argc_i) {
 		proc_argv[argc_i] = argv[argc_i + knobs.execution_args_i - 1];
 	}
 
@@ -100,11 +109,11 @@ int start_process(int argc, char* argv[]) {
 
 	int pid = fork();
 	if(pid == 0) {
-		execvp(proc_argv[0], proc_argv);
-		error (0, errno, "ERR: execvp: %s", proc_argv[0]);
+		execvpe(proc_argv[0], proc_argv, proc_env);
+		printf("ERR: execvpe: %s", proc_argv[0]);
 		exit(1);
 	} else if (pid < 0) {
-		error (0, errno, "ERR: fork: %s", proc_argv[0]);
+		printf("ERR: fork: %s", proc_argv[0]);
 	}
 	shmem->pid = pid;
 	shmem->ppid = getpid();
@@ -122,21 +131,22 @@ void benchmark_process(int pid) {
  		if(knobs.sig_bound != 0){
  			if(stop_sig != 0) {printf("\nRecieved stop signal"); break;}
  		}
- 		printf("\rchild status: %c, reading counter: %d, array size: %d", pid_status, exp_malloc_stats.counter, exp_malloc_stats.size);
-		if (exp_malloc_stats.counter >= exp_malloc_stats.size - 100) {
-			exp_malloc_stats.mem_shots = realloc(exp_malloc_stats.mem_shots, (exp_malloc_stats.size + 1000) * sizeof(memory_snapshot));
+ 		sprintf(verbose_buffer, "\rchild status: %c, reading counter: %d, array size: %d", pid_status, exp_malloc_stats.counter, exp_malloc_stats.size); verbose_print();
+		if (exp_malloc_stats.counter >= exp_malloc_stats.size) {
+			exp_malloc_stats.mem_shots = realloc(exp_malloc_stats.mem_shots, (exp_malloc_stats.size + 1000) * sizeof(T_memory_snapshot));
 			exp_malloc_stats.size += 1000;
 		}
 
 		int count = exp_malloc_stats.counter;
 		kill(pid, SIGSTOP);
-		memory_snapshot cur_mem_shot = parse_proc_maps(proc_maps_fname);
+		T_memory_snapshot cur_mem_shot = parse_proc_maps(proc_maps_fname);
 		cur_mem_shot.int_malloc_stats = *shmem;
 		kill(pid, SIGCONT);
+		if ((cur_mem_shot.total_dynamic == 0) || (cur_mem_shot.int_malloc_stats.current_usable_allocation == 0)) { goto LOOP_END; }
 		cur_mem_shot.fragmentation = calculate_fragmentation(cur_mem_shot);
+
 		exp_malloc_stats.mem_shots[exp_malloc_stats.counter] = cur_mem_shot;
 		exp_malloc_stats.counter += 1;
-
 		if(count == 0) {
 			exp_malloc_stats.comp_sys[0] = exp_malloc_stats.comp_sys[1] = cur_mem_shot;
 			exp_malloc_stats.comp_frag[0] = exp_malloc_stats.comp_frag[1] = cur_mem_shot;
@@ -151,11 +161,13 @@ void benchmark_process(int pid) {
 			exp_malloc_stats.avg_mem_shot = incr_avg_mem_shot(exp_malloc_stats.avg_mem_shot, count, cur_mem_shot);
 		}
 
-		if(knobs.verbose_flag == 1) {printf("\r"); print_mem_stats(exp_malloc_stats.mem_shots[count], NULL); printf(": CUR");}
-		sleep(knobs.delay_time/100.0);
+		LOOP_END:
+		if(knobs.verbose_flag == 1) { printf("\r"); print_mem_stats(exp_malloc_stats.mem_shots[count], NULL); printf(": CUR"); }
+		usleep(knobs.delay_time);
 		pid_status = get_proc_status(pid);
 	}
-	printf("\n"); if (pid_status == 'Z') {sprintf(verbose_buffer, "Child process went Zombie\n"); verbose_print();}
+	sprintf(verbose_buffer, "\n"); verbose_print();
+	if (pid_status == 'Z') { sprintf(verbose_buffer, "Child process went Zombie\n"); verbose_print(); }
 
 	free(proc_maps_fname); proc_maps_fname = NULL;
 	return;
@@ -171,7 +183,7 @@ int main(int argc, char* argv[]) {
 	// initiate global variables
 	init_ipc();
 	shmem->ppid = getpid();
-	shmem->MSG[11] = "\0";
+	shmem->MSG[0] = '\0';
 	shmem->malloc_count = 0;
 	shmem->free_count = 0;
 	shmem->calloc_count = 0;
@@ -184,7 +196,7 @@ int main(int argc, char* argv[]) {
 	verbose_buffer = (char*) malloc(1000 * sizeof(char));
 	start_sig = 1;
 	stop_sig = 0;
-	exp_malloc_stats.mem_shots = malloc(1000 * sizeof(memory_snapshot));
+	exp_malloc_stats.mem_shots = malloc(1000 * sizeof(T_memory_snapshot));
 	exp_malloc_stats.size = 1000;
 	exp_malloc_stats.counter = 0;
 	signal(SIGUSR1, set_pre_shot);
@@ -196,14 +208,13 @@ int main(int argc, char* argv[]) {
 
 	// initiate main thread
 	int pid = start_process(argc, argv);
- 	sprintf(verbose_buffer, "process %d created by %d\n", pid, getppid()); verbose_print();
+ 	sprintf(verbose_buffer, "process %d created by %d\n", pid, getpid()); verbose_print();
 
  	// perform memory benchmarking
  	if(knobs.sig_bound != 0) {
- 		while(start_sig == 0) {
- 			printf("\rWaiting for start signal...");
- 		}
- 		printf("\nRecieved start signal\n");
+		printf("Waiting for start signal...\n");
+ 		while(start_sig == 0) {}
+ 		printf("Recieved start signal\n");
  	}
 	benchmark_process(pid);
 

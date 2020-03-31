@@ -3,7 +3,7 @@
 
 #include <stdlib.h>
 
-typedef struct s_int_malloc_statistics {
+typedef struct S_int_malloc_statistics {
 	char MSG[11];
 	int ppid;
 	int pid;
@@ -17,12 +17,20 @@ typedef struct s_int_malloc_statistics {
 	unsigned long long usable_allocation;
 	unsigned long long current_requested_memory;
 	unsigned long long current_usable_allocation;
-} t_int_malloc_stats;
-struct s_int_malloc_statistics* int_malloc_stats;
+} T_int_malloc_stats;
 
-#ifdef CONSUMER    //Data-structures for consumer
+#ifdef MALLOC_PRELOAD
 
-struct s_parameters {
+typedef struct S__malloc_preload {
+	void* ptr;
+	size_t size;
+} T__maloc_preload;
+
+#endif // MALLOC_PRELOAD
+
+#ifdef CONSUMER    // Data-structures for consumer
+
+struct S_parameters {
 	size_t min_obj_size;
 	size_t max_obj_size;
 	size_t obj_size_step;
@@ -37,17 +45,13 @@ struct s_parameters {
 	int num_threads;
 
 	int verbose_flag;		// only 0 means false
+	int ppid;
 } knobs;
 
-typedef struct s_pointers_data {
-	void* ptr;
-	size_t requested_memory;
-} td_pointers_data;
-td_pointers_data* pointers_data;
+#endif    //Data-structures for benchmark
+#ifdef BENCHMARK
 
-#else    //Data-structures for benchmark
-
-struct s_parameters {
+struct S_parameters {
 	int delay_time;
 	char* executable;
 	int execution_args_i;
@@ -57,7 +61,7 @@ struct s_parameters {
 	int sig_bound;
 } knobs;
 
-typedef struct s_fragmentation {
+typedef struct S_fragmentation {
 	long double alignment;
 	long double bookkeeping; // NOT WORKING YET
 
@@ -66,10 +70,10 @@ typedef struct s_fragmentation {
 
 	long double total;
 	long long int ref_bytes;
-} t_fragmentation;
+} T_fragmentation;
 
-typedef struct s_memory_snapshot {
-	struct s_int_malloc_statistics int_malloc_stats;
+typedef struct S_memory_snapshot {
+	T_int_malloc_stats int_malloc_stats;
 
 	unsigned long int text;
 
@@ -85,23 +89,23 @@ typedef struct s_memory_snapshot {
 	unsigned long int unfigured;
 	unsigned long int total_dynamic;
 
-	t_fragmentation fragmentation;
-} memory_snapshot;
+	T_fragmentation fragmentation;
+} T_memory_snapshot;
 
-struct s_exp_malloc_statistics {
+struct S_exp_malloc_statistics {
 	int counter;
 	int size;
 
-	memory_snapshot pre_mem_shot;
-	memory_snapshot post_mem_shot;
-	memory_snapshot* mem_shots;
+	T_memory_snapshot pre_mem_shot;
+	T_memory_snapshot post_mem_shot;
+	T_memory_snapshot* mem_shots;
 
-	memory_snapshot avg_mem_shot;
-	memory_snapshot comp_sys[2]; //index: 0 lowest, 1 highest
-	memory_snapshot comp_frag[2]; //index: 0 lowest, 1 highest
+	T_memory_snapshot avg_mem_shot;
+	T_memory_snapshot comp_sys[2]; //index: 0 lowest, 1 highest
+	T_memory_snapshot comp_frag[2]; //index: 0 lowest, 1 highest
 
 } exp_malloc_stats;
 
-#endif //CONSUMER
+#endif // CONSUMER
 
-#endif //data_Structures_H
+#endif // data_Structures_H
