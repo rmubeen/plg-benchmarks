@@ -17,14 +17,14 @@ typedef struct S_int_malloc_statistics {
 	unsigned long long usable_allocation;
 	unsigned long long current_requested_memory;
 	unsigned long long current_usable_allocation;
-} T_int_malloc_stats;
+} T_int_malloc_stats; // internal malloc statistics
 
 #ifdef MALLOC_PRELOAD
 
 typedef struct S__malloc_preload {
 	void* ptr;
 	size_t size;
-} T__maloc_preload;
+} T__maloc_preload; // pointer storage structure
 
 #endif // MALLOC_PRELOAD
 
@@ -46,7 +46,7 @@ struct S_parameters {
 
 	int verbose_flag;		// only 0 means false
 	int ppid;
-} knobs;
+} knobs; // command-line arguments
 
 #endif    //Data-structures for benchmark
 #ifdef BENCHMARK
@@ -60,7 +60,7 @@ struct S_parameters {
 	int verbose_flag;		// only 0 means false
 	int sig_bound;
 	int send_ppid;
-} knobs;
+} knobs; // command-line arguments
 
 typedef struct S_fragmentation {
 	long double alignment;
@@ -71,7 +71,7 @@ typedef struct S_fragmentation {
 
 	long double total;
 	long long int ref_bytes;
-} T_fragmentation;
+} T_fragmentation; // fragmentation
 
 typedef struct S_memory_snapshot {
 	T_int_malloc_stats int_malloc_stats;
@@ -91,7 +91,7 @@ typedef struct S_memory_snapshot {
 	unsigned long int total_dynamic;
 
 	T_fragmentation fragmentation;
-} T_memory_snapshot;
+} T_memory_snapshot; // memory snapshot
 
 struct S_exp_malloc_statistics {
 	int counter;
@@ -105,7 +105,7 @@ struct S_exp_malloc_statistics {
 	T_memory_snapshot comp_sys[2]; //index: 0 lowest, 1 highest
 	T_memory_snapshot comp_frag[2]; //index: 0 lowest, 1 highest
 
-} exp_malloc_stats;
+} exp_malloc_stats; // explicit malloc statistics
 
 #endif // CONSUMER
 

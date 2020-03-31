@@ -19,7 +19,7 @@
 
 */
 void verbose_print() {
-	if (verbose == 1) {
+	if (verbose != 0) {
 		printf("%s", verbose_buffer);
 		verbose_buffer[0] = '\0';
 	}

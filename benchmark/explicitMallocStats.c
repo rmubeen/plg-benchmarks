@@ -161,7 +161,7 @@ void print_mem_stats_layout(FILE *fp) {
 
 void print_mem_stats(T_memory_snapshot mem_shot, FILE *fp) {
     char* str_buffer = malloc(1000 * sizeof(char));
-    sprintf(str_buffer, "%20llu %20llu %20llu %20llu %20ld %20ld %20ld %17.2Lf %17.2Lf %17.2Lf",
+    sprintf(str_buffer, "%20llu%20llu%20llu%20llu%20ld%20ld%20ld%20.2Lf%20.2Lf%20.2Lf",
         mem_shot.int_malloc_stats.requested_memory,
         mem_shot.int_malloc_stats.usable_allocation,
         mem_shot.int_malloc_stats.current_requested_memory,
