@@ -148,7 +148,7 @@ T_fragmentation incr_avg_fragmentation(T_fragmentation avg, int n, T_fragmentati
 T_fragmentation calculate_fragmentation(T_memory_snapshot mem_shot) {
     T_fragmentation fragmentation = {0};
 
-	unsigned long int mem_alloc = mem_shot.mmap + mem_shot.heap;
+	unsigned long int mem_alloc = mem_shot.total_dynamic;
 	unsigned long long mem_in_use = mem_shot.int_malloc_stats.current_usable_allocation;
     unsigned long long mem_in_req = mem_shot.int_malloc_stats.current_requested_memory;
     if(mem_in_use > mem_alloc) { return fragmentation; }
