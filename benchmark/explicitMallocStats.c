@@ -151,7 +151,7 @@ T_fragmentation calculate_fragmentation(T_memory_snapshot mem_shot) {
 	unsigned long int mem_alloc = mem_shot.total_dynamic;
 	unsigned long long mem_in_use = mem_shot.int_malloc_stats.current_usable_allocation;
     unsigned long long mem_in_req = mem_shot.int_malloc_stats.current_requested_memory;
-    if(mem_in_use > mem_alloc) { return fragmentation; }
+    if(mem_in_use > mem_alloc) { printf("\n\nWARN: negative fragmentation\n\n"); return fragmentation; }
 
     fragmentation.ref_bytes = (mem_in_req == 0) ? 1 : mem_in_req;
 

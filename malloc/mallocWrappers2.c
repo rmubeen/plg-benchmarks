@@ -39,6 +39,15 @@ void __malloc_preload_initialize() {
 	if(real_malloc_usable_size == NULL) { puts("ERROR: pre-loading malloc_usable_size dlsym "); puts(dlerror()); exit(1);}
 
 	init_ipc();
+	shmem->malloc_count = 0;
+	shmem->free_count = 0;
+	shmem->calloc_count = 0;
+	shmem->realloc_count = 0;
+
+	shmem->requested_memory = 0;
+	shmem->usable_allocation = 0;
+	shmem->current_requested_memory = 0;
+	shmem->current_usable_allocation = 0;
 }
 
 void __malloc_preload_print_stats() {
