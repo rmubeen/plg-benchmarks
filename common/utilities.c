@@ -25,7 +25,7 @@ void verbose_print() {
 	}
 }
 
-void print_file(char* fname) {
+void print_file(char* fname, FILE* fout) {
 	char buffer[1000];
 	FILE* fptr = fopen(fname, "r");
 	if(fptr == NULL) {
@@ -34,7 +34,11 @@ void print_file(char* fname) {
 	}
 
 	while(fgets(buffer, 999, fptr) != NULL) {
-		printf("%s", buffer);
+		if(fout == NULL) {
+			printf("%s", buffer);
+		} else {
+			fprintf(fout, "%s", buffer);
+		}
 	}
 
 	FUNC_PRINT_FILE_END:
@@ -73,13 +77,13 @@ char get_proc_status(int pid) {
 void init_ipc() {
 	shmid = shmget(SHM_KEY, sizeof(T_int_malloc_stats), IPC_CREAT | 0666);
 	if(shmid == -1) {
-		printf("ERR: IPC failed at shmget");
+		puts("ERR: IPC failed at shmget");
 		exit(1);
 	}
 
-	shmem = shmat(shmid, NULL, 0);
+	shmem = (T_int_malloc_stats*) shmat(shmid, NULL, 0);
 	if (shmem == (void *) -1) {
-		printf("ERR: IPC failed at shmat");
+		puts("ERR: IPC failed at shmat");
 		end_ipc();
 		exit(1);
 	}
@@ -87,11 +91,11 @@ void init_ipc() {
 
 void end_ipc() {
 	if (shmdt(shmem) == -1) {
-		printf("ERR: IPC failed at shmdt");
+		puts("ERR: IPC failed at shmdt");
 	}
 
 	if (shmctl(shmid, IPC_RMID, 0) == -1) {
-		printf("ERR: IPC may have failed (ignore if \"Invalid Argument\") at shmctl");
+		puts("ERR: IPC may have failed (ignore if \"Invalid Argument\") at shmctl");
 	}
 
 }

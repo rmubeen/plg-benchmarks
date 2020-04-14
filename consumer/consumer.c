@@ -12,9 +12,10 @@
 #include "malloc.h"
 #include "signal.h"
 
+#include "allocation.h"
 #include <sys/sysinfo.h>
-#include "distributionGen.h"
 #include "../common/utilities.h"
+//#include "../malloc/mallocWrappers.h"
 
 void parseArguments(int argc, char* argv[]) {
 	// initiate knobs with default values
@@ -34,8 +35,9 @@ void parseArguments(int argc, char* argv[]) {
 	knobs.num_objects = 1000000;
 	knobs.num_threads = 0;
 
+    knobs.ppid = -1;
 	knobs.verbose_flag = 0;
-	knobs.ppid = -1;
+    knobs.output_file = NULL;
 
 	// customize knobs as per command-line arguments
 	for(int i_argv=1; i_argv < argc; i_argv++) {
@@ -53,14 +55,26 @@ void parseArguments(int argc, char* argv[]) {
 		else if (strcmp(key, "-objN") == 0) {knobs.num_objects = atoi(value); goto LoopEnd;}
 		else if (strcmp(key, "-threadN") == 0) {knobs.num_threads = atoi(value); goto LoopEnd;}
 		else if (strcmp(key, "-ppid") == 0) {knobs.ppid = atoi(value); goto LoopEnd;}
+        else if (strcmp(key, "-o") == 0) { knobs.output_file = (char*) malloc(101 * sizeof(char)); strcpy(knobs.output_file, value); goto LoopEnd;}
 		else if (strcmp(key, "-v") == 0) {knobs.verbose_flag = 1; verbose = 1; goto LoopEnd;}
 		else if (strcmp(key, "-h") == 0) { goto UsageMessage;}
 		else { printf("Invalid argument: %s%s\n", key, value); goto UsageMessage;}
 
 		UsageMessage:
-		printf("Usage options:\n\t-minS: sets min object size\n\t-maxS: sets max object size\n\t-stepS: sets object size increment\n\t\
--distroS: sets object size distribution\n\t-minL: sets min object life\n\t-maxL: sets max object life\n\t-stepL: sets object life increment\n\t\
--distroL: sets object life distribution\n\t-objN: sets number of objects per thread\n\t-threadN: sets number of threads\n\t-v: verbose mode\n\t-h: help\n");
+		printf("Usage options:\n\
+        -minS    :  sets min object size\n\
+        -maxS    :  sets max object size\n\
+        -stepS   :  sets object size increment\n\
+        -distroS :  sets object size distribution\n\
+        -minL    :  sets min object life\n\
+        -maxL    :  sets max object life\n\
+        -stepL   :  sets object life increment\n\
+        -distroL :  sets object life distribution\n\
+        -objN    :  sets number of objects per thread\n\
+        -threadN :  sets number of threads\n\
+        -o       :  output file for post-mortem\n\
+        -v       :  verbose mode\n\
+        -h       :  help\n");
 		exit(1);
 
 		BreakLoop:
@@ -72,36 +86,30 @@ void parseArguments(int argc, char* argv[]) {
 	}
 }
 
-void instance(int pid) {
+void consumer_instance(int pid, FILE* fout) {
 	srand(time(0));
-	long int malloc_counter = 0;
-	long int free_counter = 0;
-	uniformDistMetaData* u_dist_size = uniformDistInit(knobs.min_obj_size, knobs.max_obj_size, knobs.obj_size_step);
-	void** pointers_data = malloc(knobs.num_objects * sizeof(void*));
-
+    T_alloc_state mem_allocation = init_allocations();
 	if(knobs.ppid != -1) { kill(knobs.ppid, SIGUSR1); kill(pid, SIGSTOP); } // Notify benchmark about start of allocations
-	while (malloc_counter < knobs.num_objects) {
-		size_t obj_size = next(u_dist_size);
-		pointers_data[malloc_counter] = malloc(obj_size);
-		malloc_counter += 1;
-		sprintf(verbose_buffer, "num_objects: %ld, malloc_counter: %ld, obj_size: %lu\n", knobs.num_objects, malloc_counter, obj_size);	verbose_print();
-		usleep(1);
-	}
-	while (free_counter < malloc_counter) {
-		free(pointers_data[free_counter]);
-		free_counter += 1;
-		sprintf(verbose_buffer, "malloc_counter: %ld, free_counter: %ld\n", malloc_counter, free_counter);	verbose_print();
-		usleep(1);
-	}
-	if(knobs.ppid != -1) { kill(knobs.ppid, SIGUSR1); kill(pid, SIGSTOP); } // Notify benchmark about stop of allocations
 
-	if(verbose) {malloc_stats(); printf("\n");}
-	FuncInstanceEnd:
-	free(u_dist_size);
-	free(pointers_data);
+    while(next_allocation(&mem_allocation) != 0) {
+        if(fout){
+            print_file("/proc/self/maps", fout);
+            fprintf(fout, "#PRELOAD_MALLOC_STATS %ld %ld %ld %ld %lld %lld %lld %lld\n",
+                shmem->malloc_count,
+                shmem->free_count,
+                shmem->calloc_count,
+                shmem->realloc_count,
+                shmem->requested_memory,
+                shmem->usable_allocation,
+                shmem->current_requested_memory,
+                shmem->current_usable_allocation);
+        }
+    }
+
+	if(knobs.ppid != -1) { kill(knobs.ppid, SIGUSR2); kill(pid, SIGSTOP); } // Notify benchmark about stop of allocations
+    end_allocations(&mem_allocation);
 }
 
-void __malloc_preload_print_stats() {};
 /*
 	main function handles arguments, initiates main instance, and thread instances
 	input: verbpse, min_obj_size, max_obj_size, obj_size_distribution, min_obj_life, max_obj_life, obj_life_distro, objs_per_thread, threads
@@ -116,14 +124,16 @@ int main(int argc, char* argv[]) {
 
 	// handle commandline arguments
 	parseArguments(argc, argv);
+    FILE* fout = (knobs.output_file) ? fopen(knobs.output_file, "w") : NULL;
+    if(fout) { init_ipc(); }
 	sprintf(verbose_buffer, "verbose: %s\nmin_obj_size: %lu\nmax_obj_size: %lu\nnum_objects: %ld\nppid: %d\n", verbose? "true":"false", knobs.min_obj_size, knobs.max_obj_size, knobs.num_objects, knobs.ppid); verbose_print();
 
 	// job
-	instance(getpid());
+	consumer_instance(getpid(), fout);
 	sprintf(verbose_buffer, "verbose: %s\nmin_obj_size: %lu\nmax_obj_size: %lu\nnum_objects: %ld\nppid: %d\n", verbose? "true":"false", knobs.min_obj_size, knobs.max_obj_size, knobs.num_objects, knobs.ppid); verbose_print();
 
 	// end
-	__malloc_preload_print_stats();
+    if(fout) { fclose(fout); end_ipc(); }
 	free(verbose_buffer);
 
 	return 0;

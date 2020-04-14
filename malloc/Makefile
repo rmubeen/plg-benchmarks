@@ -5,13 +5,16 @@ CFLAGS  := -g3 -O0 -DMALLOC_PRELOAD
 
 #####
 
-TARGET = mallocWrappers.so
+TARGET = mallocWrappers1.so mallocWrappers.so
 all : $(TARGET)
 
 ##### C++ Code
 
-mallocWrappers.so: mallocWrappers.c
-	$(CC) $(CFLAGS) -DMALLOC_PRELOAD_VERBOSE -shared -fPIC -o $@ $^ ../common/utilities.c -ldl
+mallocWrappers1.so: mallocWrappers1.c
+	$(CC) $(CFLAGS) -shared -fPIC -o $@ $^ ../common/utilities.c -ldl #-DMALLOC_PRELOAD_DEBUG
+
+mallocWrappers.so: mallocWrappers2.c
+	$(CC) $(CFLAGS) -shared -fPIC -o $@ $^ ../common/utilities.c -ldl #-DMALLOC_PRELOAD_DEBUG
 
 #####
 

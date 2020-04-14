@@ -44,11 +44,21 @@ struct S_parameters {
 	long int num_objects;
 	int num_threads;
 
+	int ppid;				// parent pid
+	char* output_file;
 	int verbose_flag;		// only 0 means false
-	int ppid;
 } knobs; // command-line arguments
 
-#endif    //Data-structures for benchmark
+typedef struct S_allocation_state {
+
+	long int malloc_counter;
+	long int free_counter;
+	void* size_distro;
+	void** ptrs_array;
+
+} T_alloc_state;
+
+#endif    //Data-structures for CONSUMER
 #ifdef BENCHMARK
 
 struct S_parameters {
@@ -56,6 +66,8 @@ struct S_parameters {
 	char* executable;
 	int execution_args_i;
 	char* output_file;
+
+	char* input_file;
 
 	int verbose_flag;		// only 0 means false
 	int sig_bound;
@@ -107,6 +119,6 @@ struct S_exp_malloc_statistics {
 
 } exp_malloc_stats; // explicit malloc statistics
 
-#endif // CONSUMER
+#endif // BENCHMARK
 
 #endif // data_Structures_H

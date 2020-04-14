@@ -26,12 +26,12 @@ char* verbose_buffer;
 void verbose_print();
 
 /*
-	print_file reads the file with name as fname and prints it to stdout
-	input: a char* string (name of the file to be printed)
+	print_file reads the file with name as fname and prints it to the given file stream unless pointer is NULL then it goes to stdout
+	input: a char* string (name of the file to be printed), an output file pointer
 	output: NONE
-	effects: printing to stdout
+	effects: printing to stdout or given file stream
 */
-void print_file(char* fname);
+void print_file(char* fname, FILE* fout);
 
 /*
 	get_proc_status reads /proc/<pid>/stat file for given pid and returns the status of the process with that pid

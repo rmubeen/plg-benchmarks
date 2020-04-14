@@ -7,14 +7,14 @@
 
 #include "explicitMallocStats.h"
 
-T_memory_snapshot parse_proc_maps(char* fname) {
+T_memory_snapshot parse_proc_maps(FILE* fptr) {
 	T_memory_snapshot mem_snapshot = {0};
 	int in_mmap = 0;
 
 	char buffer[1000];
-	FILE* fptr = fopen(fname, "r");
+	char* fgets_status = fgets(buffer, 1000, fptr);
 
-	while(fgets(buffer, 1000, fptr) != NULL) {
+	while((fgets_status != NULL) && (buffer[0] != '#')) {
 		char* addr_space_start = (char*) strtok(buffer, "-");
 		char* addr_space_end = strtok(NULL, " ");
 		unsigned long int bytes = (unsigned long int) (strtol(addr_space_end, NULL, 16) - strtol(addr_space_start, NULL, 16));
@@ -32,10 +32,10 @@ T_memory_snapshot parse_proc_maps(char* fname) {
 		} else if (strcmp(owner, "[heap]\n") == 0) {
 			mem_snapshot.heap += bytes;
 			in_mmap = 1;
+		} else if (((strcmp(owner, "\n") == 0) || (strcmp(owner, "/home/san/OneDrive/Academia/UW/plg/malloc-benchmarks/malloc/mallocWrappers2.so\n") == 0)) && (in_mmap == 1)) {
+			mem_snapshot.mmap += bytes;
 		} else if ((owner[0] == '/') && (in_mmap == 1)) {
 			mem_snapshot.mmap_so += bytes;
-		} else if ((strcmp(owner, "\n") == 0) && (in_mmap == 1)) {
-			mem_snapshot.mmap += bytes;
 		} else if (strcmp(owner, "[stack]\n") == 0) {
 			mem_snapshot.stack += bytes;
 			in_mmap = 0;
@@ -48,11 +48,42 @@ T_memory_snapshot parse_proc_maps(char* fname) {
 		} else {
 			mem_snapshot.unfigured += bytes;
 		}
+
+//		printf("%s %lu %s", addr_space_start, bytes, owner);
+
+		fgets_status = fgets(buffer, 1000, fptr);
 	}
 
+	if(fgets_status == NULL) {
+		mem_snapshot.int_malloc_stats.pid = -1; // flag end of file
+	} else {
+		char* token = (char*) strtok(buffer, " ");
+		token = strtok(NULL, " ");
+		mem_snapshot.int_malloc_stats.malloc_count = strtoul(token, NULL, 10);
+
+		token = strtok(NULL, " ");
+		mem_snapshot.int_malloc_stats.free_count = strtoul(token, NULL, 10);
+
+		token = strtok(NULL, " ");
+		mem_snapshot.int_malloc_stats.calloc_count = strtoul(token, NULL, 10);
+
+		token = strtok(NULL, " ");
+		mem_snapshot.int_malloc_stats.realloc_count = strtoul(token, NULL, 10);
+
+		token = strtok(NULL, " ");
+		mem_snapshot.int_malloc_stats.requested_memory = strtoull(token, NULL, 10);
+
+		token = strtok(NULL, " ");
+		mem_snapshot.int_malloc_stats.usable_allocation = strtoull(token, NULL, 10);
+
+		token = strtok(NULL, " ");
+		mem_snapshot.int_malloc_stats.current_requested_memory = strtoull(token, NULL, 10);
+
+		token = strtok(NULL, " ");
+		mem_snapshot.int_malloc_stats.current_usable_allocation = strtoull(token, NULL, 10);
+	}
 	FUNC_PARSE_PROC_MAPS_END:
-    mem_snapshot.total_dynamic = mem_snapshot.heap + mem_snapshot.mmap;
-	fclose(fptr); fptr = NULL;
+    mem_snapshot.total_dynamic = mem_snapshot.heap + mem_snapshot.mmap + mem_snapshot.mmap_so;
 	return mem_snapshot;
 }
 
@@ -177,6 +208,66 @@ void print_mem_stats(T_memory_snapshot mem_shot, FILE *fp) {
     if(fp == NULL) {printf("%s", str_buffer);}
     else {fprintf(fp, "%s\n", str_buffer);}
     free(str_buffer);
+}
+
+void print_mem_shot(T_memory_snapshot mem_shot) {
+    printf(">>>\n\
+    MSG 			%s\n\
+    ppid 			%d\n\
+    pid 			%d\n\
+    malloc_count 	%lu\n\
+    free_count 		%lu\n\
+    calloc_count	%lu\n\
+    realloc_count	%lu\n\
+    req_mem 		%llu\n\
+    in_use_mem 		%llu\n\
+    cur_req_mem 	%llu\n\
+    cur_in_use_mem 	%llu\n\
+\n\
+    text 			%lu\n\
+    heap 			%lu\n\
+    mmap_so			%lu\n\
+    mmap 			%lu\n\
+    stack 			%lu\n\
+    vvar 			%lu\n\
+    vdso 			%lu\n\
+    vsyscall		%lu\n\
+    unfigured		%lu\n\
+    total_dynamic	%lu\n\
+\n\
+    alignment%%		%Lf\n\
+    bookkeeping%%	%Lf\n\
+    int_frag%% 		%Lf\n\
+    ext_frag%% 		%Lf\n\
+    total%% 		%Lf\n\
+    ref_bytes 		%lld\n<<<\n",
+	mem_shot.int_malloc_stats.MSG,
+	mem_shot.int_malloc_stats.ppid,
+	mem_shot.int_malloc_stats.pid,
+	mem_shot.int_malloc_stats.malloc_count,
+	mem_shot.int_malloc_stats.free_count,
+	mem_shot.int_malloc_stats.calloc_count,
+	mem_shot.int_malloc_stats.realloc_count,
+	mem_shot.int_malloc_stats.requested_memory,
+	mem_shot.int_malloc_stats.usable_allocation,
+	mem_shot.int_malloc_stats.current_requested_memory,
+	mem_shot.int_malloc_stats.current_usable_allocation,
+	mem_shot.text,
+	mem_shot.heap,
+	mem_shot.mmap_so,
+	mem_shot.mmap,
+	mem_shot.stack,
+	mem_shot.vvar,
+	mem_shot.vdso,
+	mem_shot.vsyscall,
+	mem_shot.unfigured,
+	mem_shot.total_dynamic,
+	mem_shot.fragmentation.alignment,
+	mem_shot.fragmentation.bookkeeping,
+	mem_shot.fragmentation.internal,
+	mem_shot.fragmentation.external,
+	mem_shot.fragmentation.total,
+	mem_shot.fragmentation.ref_bytes);
 }
 
 #endif

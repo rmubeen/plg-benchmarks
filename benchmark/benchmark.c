@@ -20,32 +20,35 @@ void parseArguments(int argc, char* argv[]) {
 	knobs.delay_time = 10;
 	knobs.executable = malloc(50 * sizeof(char));
 	knobs.executable[0] = '\0';
+	knobs.input_file = malloc(50 * sizeof(char));
+	knobs.input_file[0] = '\0';
 	knobs.execution_args_i = argc;
 	knobs.output_file = NULL;
 
 	knobs.verbose_flag = 0;
 	knobs.sig_bound = 0;
-	knobs.send_ppid = 0;
+	knobs.send_ppid = 1;
 
 	// customize knobs as per command-line arguments
 	for(int i_argv=1; (i_argv < argc) && (knobs.execution_args_i == argc); i_argv++) {
 		char* key = strtok(argv[i_argv], "=");
 		char* value = strtok(NULL, "=");
 
-		if (strcmp (key, "-t") == 0) {knobs.delay_time = atoi(value); goto LoopEnd;}
-		else if (strcmp(key, "-v") == 0) {knobs.verbose_flag = 1; verbose = 1; goto LoopEnd;}
-		else if (strcmp(key, "-o") == 0) {knobs.output_file = malloc(100 * sizeof(char)); sprintf(knobs.output_file, "%s", value); goto LoopEnd;}
-		else if (strcmp(key, "-sig") == 0) {knobs.sig_bound = 1; start_sig = 0; stop_sig = 0; goto LoopEnd;}
-		else if (strcmp(key, "-ppid") == 0) {knobs.send_ppid = 1; goto LoopEnd;}
-		else if (strcmp(key, "-e") == 0) {sprintf(knobs.executable, "%s", value); knobs.execution_args_i = i_argv + 1; break;}
-		else if (strcmp(key, "-h") == 0) { goto UsageMessage;}
-		else { goto UsageMessage;}
+		if (strcmp (key, "-t") == 0) { knobs.delay_time = atoi(value); goto LoopEnd; }
+		else if (strcmp(key, "-v") == 0) { knobs.verbose_flag = 1; verbose = 1; goto LoopEnd; }
+		else if (strcmp(key, "-o") == 0) { knobs.output_file = malloc(100 * sizeof(char)); sprintf(knobs.output_file, "%s", value); goto LoopEnd; }
+		else if (strcmp(key, "-sig") == 0) { knobs.sig_bound = 1; start_sig = 0; stop_sig = 0; goto LoopEnd; }
+		else if (strcmp(key, "-noppid") == 0) { knobs.send_ppid = 0; goto LoopEnd; }
+		else if (strcmp(key, "-e") == 0) { sprintf(knobs.executable, "%s", value); knobs.execution_args_i = i_argv + 1; goto LoopEnd; }
+		else if (strcmp(key, "-f") == 0) { sprintf(knobs.input_file, "%s", value); goto LoopEnd; }
+		else if (strcmp(key, "-h") == 0) {  goto UsageMessage; }
+		else { goto UsageMessage; }
 
 		LoopEnd:
 		key = value = NULL;
 	}
 
-	if (knobs.executable[0] == '\0') {printf("ERR: executable not specified\n"); goto UsageMessage;}
+	if ((knobs.executable[0] == '\0') == (knobs.input_file[0] == '\0')) {printf("ERR: EITHER no executable or input file specified OR both specified\n"); goto UsageMessage;}
 	return;
 
 	UsageMessage:
@@ -53,7 +56,9 @@ void parseArguments(int argc, char* argv[]) {
 	-t=: sets delay between two readings\n\
 	-e=: path to executable followed by parameters\n\
 	-o=: output file\n\
+	-noppid: do not pass parent pid as an argument to the child\n\
 	-sig: bound to start and stop signals for reading memory usage of process\n\
+	-f=: input file for post-mortem\n\
 	-v: verbose mode\n\
 	-h: help\n");
 	exit(1);
@@ -63,7 +68,9 @@ void set_pre_shot(int sig) {
 	char* proc_maps_fname = malloc(50 * sizeof(char));
 	sprintf(proc_maps_fname, "/proc/%d/maps", shmem->pid);
 
-	exp_malloc_stats.pre_mem_shot = parse_proc_maps(proc_maps_fname);
+	FILE* fptr = fopen(proc_maps_fname, "r");
+	exp_malloc_stats.pre_mem_shot = parse_proc_maps(fptr);
+	fclose(fptr); fptr= NULL;
 	exp_malloc_stats.pre_mem_shot.int_malloc_stats = *shmem;
 	exp_malloc_stats.pre_mem_shot.fragmentation = calculate_fragmentation(exp_malloc_stats.pre_mem_shot);
 	start_sig = 1;
@@ -77,7 +84,9 @@ void set_post_shot(int sig) {
 	char* proc_maps_fname = malloc(50 * sizeof(char));
 	sprintf(proc_maps_fname, "/proc/%d/maps", shmem->pid);
 
-	exp_malloc_stats.post_mem_shot = parse_proc_maps(proc_maps_fname);
+	FILE* fptr = fopen(proc_maps_fname, "r");
+	exp_malloc_stats.post_mem_shot = parse_proc_maps(fptr);
+	fclose(fptr); fptr= NULL;
 	exp_malloc_stats.post_mem_shot.int_malloc_stats = *shmem;
 	exp_malloc_stats.post_mem_shot.fragmentation = calculate_fragmentation(exp_malloc_stats.post_mem_shot);
 	stop_sig = 1;
@@ -135,6 +144,7 @@ void benchmark_process(int pid) {
  		if(knobs.sig_bound != 0){
  			if(stop_sig != 0) {printf("\nRecieved stop signal"); break;}
  		}
+		if((pid_status != 'R') && (pid_status != 'r')) { goto LOOP_END; }
  		sprintf(verbose_buffer, "\rchild status: %c, reading counter: %d, array size: %d", pid_status, exp_malloc_stats.counter, exp_malloc_stats.size); verbose_print();
 		if (exp_malloc_stats.counter >= exp_malloc_stats.size) {
 			exp_malloc_stats.mem_shots = realloc(exp_malloc_stats.mem_shots, (exp_malloc_stats.size + 1000) * sizeof(T_memory_snapshot));
@@ -143,7 +153,9 @@ void benchmark_process(int pid) {
 
 		int count = exp_malloc_stats.counter;
 		kill(pid, SIGSTOP);
-		T_memory_snapshot cur_mem_shot = parse_proc_maps(proc_maps_fname);
+		FILE* fptr = fopen(proc_maps_fname, "r");
+		T_memory_snapshot cur_mem_shot = parse_proc_maps(fptr);
+		fclose(fptr); fptr = NULL;
 		cur_mem_shot.int_malloc_stats = *shmem;
 		kill(pid, SIGCONT);
 		if ((cur_mem_shot.total_dynamic == 0) || (cur_mem_shot.int_malloc_stats.current_usable_allocation == 0)) { goto LOOP_END; }
@@ -174,6 +186,50 @@ void benchmark_process(int pid) {
 	if (pid_status == 'Z') { sprintf(verbose_buffer, "Child process went Zombie\n"); verbose_print(); }
 
 	free(proc_maps_fname); proc_maps_fname = NULL;
+	return;
+}
+
+void analyzeMemoryConsumption() {
+	FILE* fptr = fopen(knobs.input_file, "r");
+	T_memory_snapshot cur_mem_shot = parse_proc_maps(fptr);
+
+	while (cur_mem_shot.int_malloc_stats.pid != -1) {
+ 		sprintf(verbose_buffer, "\rreading counter: %d, array size: %d", exp_malloc_stats.counter, exp_malloc_stats.size); verbose_print();
+		if (exp_malloc_stats.counter >= exp_malloc_stats.size) {
+			exp_malloc_stats.mem_shots = realloc(exp_malloc_stats.mem_shots, (exp_malloc_stats.size + 1000) * sizeof(T_memory_snapshot));
+			exp_malloc_stats.size += 1000;
+		}
+
+		int count = exp_malloc_stats.counter;
+		if ((cur_mem_shot.total_dynamic == 0) || (cur_mem_shot.int_malloc_stats.current_usable_allocation == 0)) { goto LOOP_END; }
+		cur_mem_shot.fragmentation = calculate_fragmentation(cur_mem_shot);
+		exp_malloc_stats.mem_shots[count] = cur_mem_shot;
+		exp_malloc_stats.counter += 1;
+
+		if(count == 0) {
+			exp_malloc_stats.comp_sys[0] = exp_malloc_stats.comp_sys[1] = cur_mem_shot;
+			exp_malloc_stats.comp_frag[0] = exp_malloc_stats.comp_frag[1] = cur_mem_shot;
+			exp_malloc_stats.avg_mem_shot = cur_mem_shot;
+		} else {
+			if(cur_mem_shot.total_dynamic < exp_malloc_stats.comp_sys[0].total_dynamic) { exp_malloc_stats.comp_sys[0] = cur_mem_shot; }
+			else if(cur_mem_shot.total_dynamic > exp_malloc_stats.comp_sys[1].total_dynamic) { exp_malloc_stats.comp_sys[1] = cur_mem_shot; }
+
+			if(cur_mem_shot.fragmentation.total < exp_malloc_stats.comp_frag[0].fragmentation.total) { exp_malloc_stats.comp_frag[0] = cur_mem_shot; }
+			else if(cur_mem_shot.fragmentation.total > exp_malloc_stats.comp_frag[1].fragmentation.total) { exp_malloc_stats.comp_frag[1] = cur_mem_shot; }
+
+			exp_malloc_stats.avg_mem_shot = incr_avg_mem_shot(exp_malloc_stats.avg_mem_shot, count, cur_mem_shot);
+		}
+
+//		print_mem_shot(cur_mem_shot);
+//		exit(1);
+		LOOP_END:
+		if(knobs.verbose_flag == 1) { printf("\r"); print_mem_stats(exp_malloc_stats.mem_shots[count], NULL); printf(": CUR"); }
+		cur_mem_shot = parse_proc_maps(fptr);
+	}
+//	print_mem_shot(cur_mem_shot);
+	sprintf(verbose_buffer, "\nStruck end of file.\n"); verbose_print();
+
+	fclose(fptr); fptr = NULL;
 	return;
 }
 
@@ -210,17 +266,21 @@ int main(int argc, char* argv[]) {
 	parseArguments(argc, argv);
 	sprintf(verbose_buffer, "time: %d\nverbose: %s\nexecution args start: %d\n", knobs.delay_time, verbose? "true":"false", knobs.execution_args_i); verbose_print();
 
-	// initiate main thread
-	int pid = start_process(argc, argv);
- 	sprintf(verbose_buffer, "process %d created by %d\n", pid, getpid()); verbose_print();
+	if(knobs.executable[0] != '\0') {
+		// initiate main thread
+		int pid = start_process(argc, argv);
+	 	sprintf(verbose_buffer, "process %d created by %d\n", pid, getpid()); verbose_print();
 
- 	// perform memory benchmarking
- 	if(knobs.sig_bound != 0) {
-		printf("Waiting for start signal...\n");
- 		while(start_sig == 0) {}
- 		printf("Recieved start signal\n");
- 	}
-	benchmark_process(pid);
+	 	// perform memory benchmarking
+	 	if(knobs.sig_bound != 0) {
+			printf("Waiting for start signal...\n");
+	 		while(start_sig == 0) {}
+	 		printf("Recieved start signal\n");
+	 	}
+		benchmark_process(pid);
+	} else {
+		analyzeMemoryConsumption();
+	}
 
 	// print results
 	print_mem_stats_layout(NULL);

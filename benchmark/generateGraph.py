@@ -1,3 +1,5 @@
+#!/bin/python3
+
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
@@ -16,7 +18,7 @@ def draw_graph(titles, data):
 
     plt.show()
 
-def read_file(fname, skip_rows_top, columns):
+def read_file(fname, skip_rows_top, skip_rows_bottom, columns):
     fin = open(fname, "r")
     content = fin.readlines()
     titles = content[1].split()
@@ -29,7 +31,7 @@ def read_file(fname, skip_rows_top, columns):
     if(skip_rows_top == 0):
         skip_rows_top = 2
 
-    for i in range(skip_rows_top, len(content)):
+    for i in range(skip_rows_top, len(content)-skip_rows_bottom):
         cur_data = content[i].split()
         cur_data = [float(i) for i in cur_data]
 
@@ -39,7 +41,7 @@ def read_file(fname, skip_rows_top, columns):
     return titles, data
 
 if(__name__ == "__main__"):
-    arg_req = ["<filename>", "<rows to skip on top>"]
+    arg_req = ["<filename>", "<top rows to skip>", "<bottom rows to skip>"]
 
     arg_len = len(sys.argv) - 1
     if (arg_len < len(arg_req)):
@@ -47,5 +49,5 @@ if(__name__ == "__main__"):
         print("Usage:\n\tpython(3)", sys.argv[0], " ".join(arg_req), "<columns to draw graph>")
         exit()
 
-    titles, data = read_file(sys.argv[1], int(sys.argv[2]), [int(i) for i in sys.argv[3:]])
+    titles, data = read_file(sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), [int(i) for i in sys.argv[4:]])
     draw_graph(titles, data)

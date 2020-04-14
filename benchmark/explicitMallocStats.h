@@ -9,7 +9,7 @@
 	output: a variable of type T_memory_snapshot
 	effects: may print error message(s)
 */
-T_memory_snapshot parse_proc_maps(char* fname);
+T_memory_snapshot parse_proc_maps(FILE* fptr);
 
 /*
 	calculate_fragmentation takes a variable of type T_memory_snapshot and calculates fragmentation as per heap and mmap bytes allocated to process and
@@ -61,5 +61,7 @@ void print_mem_stats_layout(FILE *fp);
 	effects: may print to stdout or file stream
 */
 void print_mem_stats(T_memory_snapshot mem_shot, FILE *fp);
+
+void print_mem_shot(T_memory_snapshot mem_shot);
 
 #endif
